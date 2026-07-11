@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery/fake"
+	"k8s.io/client-go/dynamic"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	clienttesting "k8s.io/client-go/testing"
 )
@@ -51,11 +52,10 @@ func TestDiscovererPaginatesLists(t *testing.T) {
 	listKinds := map[schema.GroupVersionResource]string{deploymentsGVR: "DeploymentList"}
 	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), listKinds)
 	var options []metav1.ListOptions
+	page := 0
 	dynamicClient.PrependReactor("list", "deployments", func(action clienttesting.Action) (bool, runtime.Object, error) {
-		listAction := action.(clienttesting.ListActionImpl)
-		opts := listAction.GetListOptions()
-		options = append(options, opts)
-		if opts.Continue == "" {
+		page++
+		if page == 1 {
 			return true, &unstructured.UnstructuredList{
 				Object: map[string]any{"metadata": map[string]any{"continue": "next-page"}},
 				Items:  []unstructured.Unstructured{*one},
@@ -64,7 +64,8 @@ func TestDiscovererPaginatesLists(t *testing.T) {
 		return true, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*two}}, nil
 	})
 
-	items, err := NewDiscovererForInterfaces(dynamicClient, &fake.FakeDiscovery{Fake: &clienttesting.Fake{}}).List(
+	recordingClient := &listOptionsRecordingClient{Interface: dynamicClient, options: &options}
+	items, err := NewDiscovererForInterfaces(recordingClient, &fake.FakeDiscovery{Fake: &clienttesting.Fake{}}).List(
 		context.Background(), []string{"team-a"}, []Kind{Deployment},
 	)
 	if err != nil {
@@ -76,4 +77,41 @@ func TestDiscovererPaginatesLists(t *testing.T) {
 	if len(options) != 2 || options[0].Limit != discoveryPageSize || options[0].Continue != "" || options[1].Limit != discoveryPageSize || options[1].Continue != "next-page" {
 		t.Fatalf("list options = %#v", options)
 	}
+}
+
+// The client-go dynamic fake converts ListOptions to selector-only actions,
+// dropping Limit and Continue before reactors see them. Record the options at
+// the ResourceInterface boundary so this test exercises pagination faithfully.
+type listOptionsRecordingClient struct {
+	dynamic.Interface
+	options *[]metav1.ListOptions
+}
+
+func (c *listOptionsRecordingClient) Resource(resource schema.GroupVersionResource) dynamic.NamespaceableResourceInterface {
+	return &listOptionsRecordingResource{
+		NamespaceableResourceInterface: c.Interface.Resource(resource),
+		options:                        c.options,
+	}
+}
+
+type listOptionsRecordingResource struct {
+	dynamic.NamespaceableResourceInterface
+	options *[]metav1.ListOptions
+}
+
+func (r *listOptionsRecordingResource) Namespace(namespace string) dynamic.ResourceInterface {
+	return &listOptionsRecordingNamespacedResource{
+		ResourceInterface: r.NamespaceableResourceInterface.Namespace(namespace),
+		options:           r.options,
+	}
+}
+
+type listOptionsRecordingNamespacedResource struct {
+	dynamic.ResourceInterface
+	options *[]metav1.ListOptions
+}
+
+func (r *listOptionsRecordingNamespacedResource) List(ctx context.Context, options metav1.ListOptions) (*unstructured.UnstructuredList, error) {
+	*r.options = append(*r.options, options)
+	return r.ResourceInterface.List(ctx, options)
 }
