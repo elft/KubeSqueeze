@@ -1,0 +1,79 @@
+# Copy and adapt this file into .github/workflows only after configuring the
+# protected `kubesqueeze-production` environment and its required reviewers.
+name: Scheduled KubeSqueeze
+
+on:
+  schedule:
+    - cron: "0 1 * * 1-5" # squeeze at 01:00 UTC on weekdays
+    - cron: "0 12 * * 1-5" # restore at 12:00 UTC on weekdays
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Operation to run
+        required: true
+        type: choice
+        options: [squeeze, restore]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kubesqueeze-production
+  cancel-in-progress: false
+
+jobs:
+  mutate:
+    environment: kubesqueeze-production
+    runs-on: ubuntu-24.04
+    env:
+      KUBESQUEEZE_VERSION: v0.1.0
+      # Configure this as an environment variable, not user-provided input.
+      KUBESQUEEZE_CONTEXT: ${{ vars.KUBESQUEEZE_CONTEXT }}
+    steps:
+      - name: Determine operation
+        id: operation
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          INPUT_OPERATION: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            operation="$INPUT_OPERATION"
+          elif [[ "$EVENT_SCHEDULE" == "0 1 * * 1-5" ]]; then
+            operation=squeeze
+          else
+            operation=restore
+          fi
+          echo "operation=$operation" >> "$GITHUB_OUTPUT"
+      - name: Install pinned KubeSqueeze release
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            --output kubesqueeze.tar.gz \
+            "https://github.com/elft/KubeSqueeze/releases/download/${KUBESQUEEZE_VERSION}/kubesqueeze_linux_amd64.tar.gz"
+          # Replace with the checksum published for the selected release.
+          echo "REPLACE_WITH_PUBLISHED_SHA256  kubesqueeze.tar.gz" | sha256sum --check
+          tar -xzf kubesqueeze.tar.gz kubesqueeze
+          sudo install -m 0755 kubesqueeze /usr/local/bin/kubesqueeze
+      - name: Install protected kubeconfig
+        env:
+          KUBECONFIG_B64: ${{ secrets.KUBECONFIG_B64 }}
+        run: |
+          set -euo pipefail
+          install -d -m 0700 "$RUNNER_TEMP/kube"
+          printf '%s' "$KUBECONFIG_B64" | base64 --decode > "$RUNNER_TEMP/kube/config"
+          chmod 0600 "$RUNNER_TEMP/kube/config"
+      - name: Validate target and run
+        env:
+          KUBECONFIG: ${{ runner.temp }}/kube/config
+          OPERATION: ${{ steps.operation.outputs.operation }}
+        run: |
+          set -euo pipefail
+          test -n "$KUBESQUEEZE_CONTEXT"
+          kubesqueeze "$OPERATION" \
+            --kubeconfig "$KUBECONFIG" \
+            --context "$KUBESQUEEZE_CONTEXT" \
+            --namespace shop-staging \
+            --include-label-selector 'squeeze.example.com/enabled=true' \
+            --ignore-label-selector 'squeeze.example.com/tier=critical'

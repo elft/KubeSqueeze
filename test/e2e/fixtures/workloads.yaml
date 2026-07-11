@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: squeeze-e2e
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: squeeze-control
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-main
+  namespace: squeeze-e2e
+  labels:
+    app.kubernetes.io/part-of: store
+    environment: test
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: api-main}
+  template:
+    metadata:
+      labels: {app: api-main}
+    spec:
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-critical
+  namespace: squeeze-e2e
+  labels:
+    app.kubernetes.io/part-of: store
+    environment: test
+    squeeze.example.com/tier: critical
+spec:
+  replicas: 4
+  selector:
+    matchLabels: {app: api-critical}
+  template:
+    metadata:
+      labels: {app: api-critical}
+    spec:
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: website-control
+  namespace: squeeze-e2e
+  labels:
+    app.kubernetes.io/part-of: store
+    environment: test
+spec:
+  replicas: 5
+  selector:
+    matchLabels: {app: website-control}
+  template:
+    metadata:
+      labels: {app: website-control}
+    spec:
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-other-namespace
+  namespace: squeeze-control
+  labels:
+    app.kubernetes.io/part-of: store
+    environment: test
+spec:
+  replicas: 6
+  selector:
+    matchLabels: {app: api-other-namespace}
+  template:
+    metadata:
+      labels: {app: api-other-namespace}
+    spec:
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.2
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db-main
+  namespace: squeeze-e2e
+  labels:
+    app.kubernetes.io/part-of: store
+    environment: test
+spec:
+  serviceName: db-main
+  replicas: 2
+  selector:
+    matchLabels: {app: db-main}
+  template:
+    metadata:
+      labels: {app: db-main}
+    spec:
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.2

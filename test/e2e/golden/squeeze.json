@@ -1,0 +1,65 @@
+{
+  "cluster": {
+    "context": "kind-kubesqueeze-e2e",
+    "server": "<server>"
+  },
+  "discovered": 6,
+  "ignored": [
+    {
+      "categories": [
+        "label"
+      ],
+      "kind": "cronjob",
+      "name": "report-critical",
+      "namespace": "squeeze-e2e"
+    },
+    {
+      "categories": [
+        "label"
+      ],
+      "kind": "deployment",
+      "name": "api-critical",
+      "namespace": "squeeze-e2e"
+    }
+  ],
+  "included": 5,
+  "mutated": [
+    {
+      "current": {
+        "suspend": true
+      },
+      "kind": "cronjob",
+      "name": "report-main",
+      "namespace": "squeeze-e2e",
+      "previous": {
+        "suspend": false
+      },
+      "status": "updated"
+    },
+    {
+      "current": {
+        "replicas": 0
+      },
+      "kind": "deployment",
+      "name": "api-main",
+      "namespace": "squeeze-e2e",
+      "previous": {
+        "replicas": 3
+      },
+      "status": "updated"
+    },
+    {
+      "current": {
+        "replicas": 0
+      },
+      "kind": "statefulset",
+      "name": "db-main",
+      "namespace": "squeeze-e2e",
+      "previous": {
+        "replicas": 2
+      },
+      "status": "updated"
+    }
+  ],
+  "operation": "squeeze"
+}

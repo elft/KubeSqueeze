@@ -1,0 +1,41 @@
+name: Legacy Kubernetes compatibility
+
+on:
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kubernetes-1-15:
+    # Kubernetes 1.15 is EOL. This lane reports regressions without blocking
+    # maintained-version changes or making the scheduled workflow fail.
+    continue-on-error: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install pinned legacy kind and kubectl
+        env:
+          KIND_VERSION: v0.12.0
+          KUBECTL_VERSION: v1.15.12
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            --output kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
+          curl --fail --location --silent --show-error \
+            --output kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+          sudo install -m 0755 kind kubectl /usr/local/bin/
+      - name: Build
+        run: make build
+      - name: Run legacy integration test
+        env:
+          KIND_NODE_IMAGE: kindest/node:v1.15.12@sha256:9dfc13db6d3fd5e5b275f8c4657ee6a62ef9cb405546664f2de2eabcfd6db778
+          KUBESQUEEZE_BIN: ${{ github.workspace }}/bin/kubesqueeze
+        run: test/e2e/run.sh

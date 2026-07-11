@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: report-main
+  namespace: squeeze-e2e
+  labels:
+    app.kubernetes.io/part-of: store
+    environment: test
+spec:
+  schedule: "0 0 * * *"
+  suspend: false
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: report
+              image: registry.k8s.io/pause:3.2
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: report-critical
+  namespace: squeeze-e2e
+  labels:
+    app.kubernetes.io/part-of: store
+    environment: test
+    squeeze.example.com/tier: critical
+spec:
+  schedule: "0 0 * * *"
+  suspend: true
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: report
+              image: registry.k8s.io/pause:3.2
