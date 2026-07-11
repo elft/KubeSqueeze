@@ -1,4 +1,11 @@
-# KubeSqueeze
+<div align="center">
+  <img src="docs/assets/kubesqueeze-logo.png" alt="KubeSqueeze: a Kubernetes helm squeezing a lemon" width="300">
+  <h1>KubeSqueeze</h1>
+  <p>
+    <a href="https://github.com/elft/KubeSqueeze/actions/workflows/ci.yaml"><img src="https://github.com/elft/KubeSqueeze/actions/workflows/ci.yaml/badge.svg?branch=main" alt="Main build"></a>
+    <a href="https://github.com/elft/KubeSqueeze/actions/workflows/e2e-legacy.yaml"><img src="https://github.com/elft/KubeSqueeze/actions/workflows/e2e-legacy.yaml/badge.svg" alt="Legacy Kubernetes compatibility"></a>
+  </p>
+</div>
 
 ## The problem
 

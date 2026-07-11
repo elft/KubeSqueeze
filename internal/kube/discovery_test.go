@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery/fake"
@@ -41,5 +42,38 @@ func TestDiscovererErrorsWhenNoCronJobAPIIsServed(t *testing.T) {
 	_, err := NewDiscovererForInterfaces(dynamicClient, discoveryClient).List(context.Background(), nil, []Kind{CronJob})
 	if err == nil {
 		t.Fatal("expected CronJob discovery error")
+	}
+}
+
+func TestDiscovererPaginatesLists(t *testing.T) {
+	one := workloadObject("apps/v1", "Deployment", "one", "team-a", map[string]any{})
+	two := workloadObject("apps/v1", "Deployment", "two", "team-a", map[string]any{})
+	listKinds := map[schema.GroupVersionResource]string{deploymentsGVR: "DeploymentList"}
+	dynamicClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), listKinds)
+	var options []metav1.ListOptions
+	dynamicClient.PrependReactor("list", "deployments", func(action clienttesting.Action) (bool, runtime.Object, error) {
+		listAction := action.(clienttesting.ListActionImpl)
+		opts := listAction.GetListOptions()
+		options = append(options, opts)
+		if opts.Continue == "" {
+			return true, &unstructured.UnstructuredList{
+				Object: map[string]any{"metadata": map[string]any{"continue": "next-page"}},
+				Items:  []unstructured.Unstructured{*one},
+			}, nil
+		}
+		return true, &unstructured.UnstructuredList{Items: []unstructured.Unstructured{*two}}, nil
+	})
+
+	items, err := NewDiscovererForInterfaces(dynamicClient, &fake.FakeDiscovery{Fake: &clienttesting.Fake{}}).List(
+		context.Background(), []string{"team-a"}, []Kind{Deployment},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("items = %d, want 2", len(items))
+	}
+	if len(options) != 2 || options[0].Limit != discoveryPageSize || options[0].Continue != "" || options[1].Limit != discoveryPageSize || options[1].Continue != "next-page" {
+		t.Fatalf("list options = %#v", options)
 	}
 }

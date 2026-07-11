@@ -18,6 +18,10 @@ type Discoverer struct {
 	discovery discovery.DiscoveryInterface
 }
 
+// discoveryPageSize bounds each response returned by the API server. The
+// continue token keeps all pages on the same consistent list snapshot.
+const discoveryPageSize int64 = 500
+
 func NewDiscoverer(client *Client) *Discoverer {
 	return &Discoverer{dynamic: client.Dynamic, discovery: client.Discovery.Discovery()}
 }
@@ -58,13 +62,23 @@ func (d *Discoverer) List(ctx context.Context, namespaces []string, kinds []Kind
 	for _, kind := range requested {
 		gvr := gvrs[kind]
 		for _, namespace := range namespaces {
-			list, err := d.dynamic.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{})
-			if err != nil {
-				return nil, fmt.Errorf("list %s in namespace %q: %w", kind, namespace, err)
-			}
-			for i := range list.Items {
-				object := list.Items[i].DeepCopy()
-				result = append(result, Workload{Kind: kind, GVR: gvr, Object: object})
+			continueToken := ""
+			for {
+				list, err := d.dynamic.Resource(gvr).Namespace(namespace).List(ctx, metav1.ListOptions{
+					Limit:    discoveryPageSize,
+					Continue: continueToken,
+				})
+				if err != nil {
+					return nil, fmt.Errorf("list %s in namespace %q: %w", kind, namespace, err)
+				}
+				for i := range list.Items {
+					object := list.Items[i].DeepCopy()
+					result = append(result, Workload{Kind: kind, GVR: gvr, Object: object})
+				}
+				continueToken = list.GetContinue()
+				if continueToken == "" {
+					break
+				}
 			}
 		}
 	}
