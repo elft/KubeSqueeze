@@ -1,6 +1,14 @@
 # KubeSqueeze
 
-KubeSqueeze is a command-line tool for temporarily reducing Kubernetes workloads and later restoring their original state. It is intended for scheduled shutdowns of development, test, and other non-continuous environments; it is not a replacement for a metric-driven autoscaler or HPA.
+## The problem
+
+Horizontal Pod Autoscalers help individual workloads respond to demand, but their minimum replica count defaults to one. Kubernetes introduced HPA scale-to-zero support in version 1.16, but it remains an alpha feature that is disabled by default. Using it requires enabling the `HPAScaleToZero` feature gate and configuring at least one Object or External metric for each HPA scale target. That additional metrics pipeline and per-workload configuration can be valuable for demand-driven scaling, but it is a different problem from intentionally shutting down an idle environment.
+
+[KEDA](https://keda.sh/docs/2.20/concepts/scaling-deployments/) provides event-driven scale-to-zero without relying on the Kubernetes alpha feature. It continuously monitors event sources, directly handles scaling between zero and one replica, and uses an HPA for scaling between one and many replicas. KEDA also supports time-based scaling with its [Cron scaler](https://keda.sh/docs/2.20/scalers/cron/). This is a strong fit when each workload should automatically wake in response to a queue, event, metric, or schedule, but it requires installing KEDA and defining a `ScaledObject` with triggers and sometimes authentication for each scale target.
+
+KubeSqueeze solves a broader operational scheduling problem. When you have consciously decided that an environment, a team's environment, a region, or another group of workloads does not need to run hot 24/7, one command performs a controlled sweep across every workload selected by its namespace and filters. It records the current state, temporarily scales Deployments and StatefulSets to zero, suspends CronJobs, and later restores their original settings. It does not require a long-running autoscaling control plane or per-workload trigger configuration, but it also does not monitor demand or automatically wake a workload when an event arrives; restoration must be invoked explicitly or by an external scheduler.
+
+KubeSqueeze does not itself scale down or terminate cluster nodes. Instead, it removes selected workload demand so a separately configured Kubernetes node autoscaler can consolidate or remove nodes when possible. It is not a replacement for a metric-driven autoscaler or HPA.
 
 During `squeeze`, KubeSqueeze records a Deployment or StatefulSet replica count in the `kubesqueeze.io/original-replicas` annotation before scaling it to zero. For a CronJob it records the original suspend value in `kubesqueeze.io/original-suspend` before suspending it. `restore` reads that state and restores the workload. Saved annotations remain after restore so the operation can be safely repeated.
 
@@ -103,3 +111,7 @@ make e2e KIND_NODE_IMAGE='kindest/node:v1.35.0@sha256:452d707d4862f52530247495d1
 ```
 
 The E2E harness creates an isolated kind cluster, applies selected/ignored/control fixtures, runs squeeze and restore, and verifies exact normalized JSON plus cluster state. `PRESERVE_CLUSTER=1` keeps the cluster for troubleshooting.
+
+## License
+
+KubeSqueeze is available under the [MIT License](LICENSE).
