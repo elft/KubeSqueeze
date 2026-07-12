@@ -75,7 +75,13 @@ func Run(ctx context.Context, opts options.Validated) (output.Result, error) {
 	if opts.Operation == options.OperationRestore {
 		operation = kube.Restore
 	}
-	changes, err := kube.NewEngine(client).Apply(ctx, operation, mutationSet)
+	engine := kube.NewEngine(client)
+	var changes []kube.Change
+	if opts.DryRun {
+		changes, err = engine.Plan(operation, mutationSet)
+	} else {
+		changes, err = engine.Apply(ctx, operation, mutationSet)
+	}
 	if err != nil {
 		return fail(err)
 	}
@@ -89,18 +95,23 @@ func Run(ctx context.Context, opts options.Validated) (output.Result, error) {
 		if err != nil {
 			return fail(err)
 		}
-		mutated = append(mutated, output.MutatedResource{
+		item := output.MutatedResource{
 			Namespace: change.Namespace,
 			Kind:      selection.Kind(change.Kind),
 			Name:      change.Name,
 			Previous:  previous,
 			Current:   current,
 			Status:    change.Status,
-		})
+		}
+		if opts.DryRun {
+			item.Annotations = change.Annotations
+		}
+		mutated = append(mutated, item)
 	}
 
 	return output.Result{
 		Operation:  string(opts.Operation),
+		DryRun:     opts.DryRun,
 		Cluster:    cluster,
 		Discovered: selected.Discovered,
 		Included:   len(selected.Included) + len(selected.Ignored),

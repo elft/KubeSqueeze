@@ -19,7 +19,36 @@ KubeSqueeze does not itself scale down or terminate cluster nodes. Instead, it r
 
 During `squeeze`, KubeSqueeze records a Deployment or StatefulSet replica count in the `kubesqueeze.io/original-replicas` annotation before scaling it to zero. For a CronJob it records the original suspend value in `kubesqueeze.io/original-suspend` before suspending it. `restore` reads that state and restores the workload. Saved annotations remain after restore so the operation can be safely repeated.
 
-## Build
+## Install
+
+Download the archive for your operating system and architecture from the [latest GitHub release](https://github.com/elft/KubeSqueeze/releases/latest). For example, on Linux amd64:
+
+```sh
+version=v0.1.0
+curl --fail --location --remote-name \
+  "https://github.com/elft/KubeSqueeze/releases/download/${version}/kubesqueeze_linux_amd64.tar.gz"
+curl --fail --location --remote-name \
+  "https://github.com/elft/KubeSqueeze/releases/download/${version}/checksums.txt"
+sha256sum --ignore-missing --check checksums.txt
+tar -xzf kubesqueeze_linux_amd64.tar.gz
+sudo install -m 0755 kubesqueeze /usr/local/bin/kubesqueeze
+```
+
+Release archives and container images include GitHub build-provenance attestations. With the GitHub CLI installed, verify a downloaded archive with:
+
+```sh
+gh attestation verify kubesqueeze_linux_amd64.tar.gz --repo elft/KubeSqueeze
+```
+
+The multi-architecture container image is available from the GitHub Container Registry:
+
+```sh
+docker pull ghcr.io/elft/kubesqueeze:v0.1.0
+```
+
+Use an exact version or image digest in automation instead of `latest`.
+
+## Build from source
 
 Go 1.24 or newer is required.
 
@@ -43,6 +72,20 @@ kubesqueeze squeeze \
 ```
 
 The namespace from `--namespace` takes precedence over a namespace configured on the context. A successful selection with no matching resources is a no-op.
+
+### Preview changes with a dry run
+
+Add `--dry-run` to either `squeeze` or `restore` to perform context checks, discovery, selection, and mutation validation without modifying any workload:
+
+```sh
+kubesqueeze squeeze \
+  --context kind-development \
+  --namespace shop-staging \
+  --include-name-regex '^(api|worker)-.*$' \
+  --dry-run
+```
+
+The JSON result includes `"dryRun": true`, the previous and planned state of every selected workload, and an `annotations` object for each planned update. For example, a Deployment with three replicas reports `"annotations":{"kubesqueeze.io/original-replicas":"3"}` together with a planned replica count of zero. Resources whose state is already correct have status `unchanged` and no planned annotations.
 
 ## Include and ignore selectors
 
@@ -118,6 +161,15 @@ make e2e KIND_NODE_IMAGE='kindest/node:v1.35.0@sha256:452d707d4862f52530247495d1
 ```
 
 The E2E harness creates an isolated kind cluster, applies selected/ignored/control fixtures, runs squeeze and restore, and verifies exact normalized JSON plus cluster state. `PRESERVE_CLUSTER=1` keeps the cluster for troubleshooting.
+
+### Publishing a release
+
+The release workflow accepts stable semantic-version tags and publishes the GitHub Release only after tests, all native builds, and the multi-architecture container build succeed:
+
+```sh
+git tag -a v0.1.0 -m 'v0.1.0'
+git push origin v0.1.0
+```
 
 ## License
 

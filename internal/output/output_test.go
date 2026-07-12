@@ -19,3 +19,25 @@ func TestWriteStableShape(t *testing.T) {
 		t.Fatalf("output = %q, want %q", got.String(), want)
 	}
 }
+
+func TestWriteDryRunIncludesPlannedAnnotations(t *testing.T) {
+	replicas, zero := int32(3), int32(0)
+	value := Result{
+		Operation: "squeeze",
+		DryRun:    true,
+		Ignored:   []IgnoredResource{},
+		Mutated: []MutatedResource{{
+			Namespace: "team", Kind: selection.KindDeployment, Name: "api",
+			Previous: State{Replicas: &replicas}, Current: State{Replicas: &zero}, Status: "updated",
+			Annotations: map[string]string{"kubesqueeze.io/original-replicas": "3"},
+		}},
+	}
+	var got bytes.Buffer
+	if err := Write(&got, value); err != nil {
+		t.Fatal(err)
+	}
+	want := `{"operation":"squeeze","dryRun":true,"cluster":{"context":"","server":""},"discovered":0,"included":0,"ignored":[],"mutated":[{"namespace":"team","kind":"deployment","name":"api","previous":{"replicas":3},"current":{"replicas":0},"status":"updated","annotations":{"kubesqueeze.io/original-replicas":"3"}}]}` + "\n"
+	if got.String() != want {
+		t.Fatalf("output = %q, want %q", got.String(), want)
+	}
+}

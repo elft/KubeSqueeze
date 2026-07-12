@@ -52,3 +52,18 @@ func TestCommandValidatesBeforeHandler(t *testing.T) {
 		t.Fatal("handler called before validation")
 	}
 }
+
+func TestCommandParsesDryRun(t *testing.T) {
+	var got options.Validated
+	command := Command{Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}, Handler: func(_ context.Context, validated options.Validated) (output.Result, error) {
+		got = validated
+		return output.Result{}, nil
+	}}.New()
+	command.SetArgs([]string{"squeeze", "--context", "dev", "--namespace", "team-a", "--include-kind", "deployment", "--dry-run"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !got.DryRun {
+		t.Fatal("--dry-run was not passed to the handler")
+	}
+}

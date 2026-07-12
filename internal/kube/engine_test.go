@@ -95,6 +95,26 @@ func TestEngineValidatesAllResourcesBeforePatching(t *testing.T) {
 	assertIntField(t, unchanged, 4, "spec", "replicas")
 }
 
+func TestEnginePlanReportsAnnotationWithoutPatching(t *testing.T) {
+	object := workloadObject("apps/v1", "Deployment", "web", "team-a", map[string]any{"replicas": int64(3)})
+	client := fake.NewSimpleDynamicClient(runtime.NewScheme(), object)
+	engine := NewEngineForInterface(client)
+
+	changes, err := engine.Plan(Squeeze, []Workload{{Kind: Deployment, GVR: deploymentsGVR, Object: object.DeepCopy()}})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if len(client.Actions()) != 0 {
+		t.Fatalf("plan sent Kubernetes requests: %#v", client.Actions())
+	}
+	if len(changes) != 1 || changes[0].Previous != int64(3) || changes[0].Current != int64(0) || changes[0].Status != "updated" {
+		t.Fatalf("unexpected changes: %#v", changes)
+	}
+	if got := changes[0].Annotations[OriginalReplicasAnnotation]; got != "3" {
+		t.Fatalf("planned annotation = %q, want 3", got)
+	}
+}
+
 func workloadObject(apiVersion, kind, name, namespace string, spec map[string]any) *unstructured.Unstructured {
 	return &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": apiVersion,

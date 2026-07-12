@@ -65,6 +65,7 @@ func (c Command) operationCommand(operation options.Operation) *cobra.Command {
 	flags.StringVar(&opts.Context, "context", "", "kubeconfig context to target (required)")
 	flags.StringArrayVar(&opts.Namespaces, "namespace", nil, "namespace safety boundary (repeatable)")
 	flags.BoolVar(&opts.AllNamespaces, "all-namespaces", false, "allow selection across every namespace")
+	flags.BoolVar(&opts.DryRun, "dry-run", false, "print planned changes and annotations without modifying workloads")
 	addRuleFlags(flags, "include", &opts.Include)
 	addRuleFlags(flags, "ignore", &opts.Ignore)
 	return command

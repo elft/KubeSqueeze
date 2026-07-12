@@ -27,12 +27,13 @@ const (
 // workload. Previous and Current are int64 for replica workloads and bool for
 // CronJobs.
 type Change struct {
-	Namespace string `json:"namespace"`
-	Kind      Kind   `json:"kind"`
-	Name      string `json:"name"`
-	Previous  any    `json:"previous"`
-	Current   any    `json:"current"`
-	Status    string `json:"status"`
+	Namespace   string            `json:"namespace"`
+	Kind        Kind              `json:"kind"`
+	Name        string            `json:"name"`
+	Previous    any               `json:"previous"`
+	Current     any               `json:"current"`
+	Status      string            `json:"status"`
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 type Engine struct {
@@ -47,6 +48,45 @@ func NewEngineForInterface(client dynamic.Interface) *Engine { return &Engine{dy
 // resources in deterministic input-independent order. API failures are
 // fail-fast; successful earlier patches cannot be rolled back by Kubernetes.
 func (e *Engine) Apply(ctx context.Context, operation Operation, workloads []Workload) ([]Change, error) {
+	plans, err := planMutations(operation, workloads)
+	if err != nil {
+		return nil, err
+	}
+
+	changes := make([]Change, 0, len(plans))
+	for _, plan := range plans {
+		if plan.patch != nil {
+			payload, err := json.Marshal(plan.patch)
+			if err != nil {
+				return nil, fmt.Errorf("encode patch for %s/%s: %w", plan.workload.Namespace(), plan.workload.Name(), err)
+			}
+			_, err = e.dynamic.Resource(plan.workload.GVR).Namespace(plan.workload.Namespace()).Patch(
+				ctx, plan.workload.Name(), types.MergePatchType, payload, metav1.PatchOptions{},
+			)
+			if err != nil {
+				return nil, fmt.Errorf("patch %s %s/%s: %w", plan.workload.Kind, plan.workload.Namespace(), plan.workload.Name(), err)
+			}
+		}
+		changes = append(changes, plan.change)
+	}
+	return changes, nil
+}
+
+// Plan performs the same validation and returns the same changes as Apply,
+// including annotation updates, without sending patches to Kubernetes.
+func (e *Engine) Plan(operation Operation, workloads []Workload) ([]Change, error) {
+	plans, err := planMutations(operation, workloads)
+	if err != nil {
+		return nil, err
+	}
+	changes := make([]Change, 0, len(plans))
+	for _, plan := range plans {
+		changes = append(changes, plan.change)
+	}
+	return changes, nil
+}
+
+func planMutations(operation Operation, workloads []Workload) ([]mutation, error) {
 	if operation != Squeeze && operation != Restore {
 		return nil, fmt.Errorf("unsupported operation %q", operation)
 	}
@@ -67,23 +107,7 @@ func (e *Engine) Apply(ctx context.Context, operation Operation, workloads []Wor
 		plans = append(plans, plan)
 	}
 
-	changes := make([]Change, 0, len(plans))
-	for _, plan := range plans {
-		if plan.patch != nil {
-			payload, err := json.Marshal(plan.patch)
-			if err != nil {
-				return nil, fmt.Errorf("encode patch for %s/%s: %w", plan.workload.Namespace(), plan.workload.Name(), err)
-			}
-			_, err = e.dynamic.Resource(plan.workload.GVR).Namespace(plan.workload.Namespace()).Patch(
-				ctx, plan.workload.Name(), types.MergePatchType, payload, metav1.PatchOptions{},
-			)
-			if err != nil {
-				return nil, fmt.Errorf("patch %s %s/%s: %w", plan.workload.Kind, plan.workload.Namespace(), plan.workload.Name(), err)
-			}
-		}
-		changes = append(changes, plan.change)
-	}
-	return changes, nil
+	return plans, nil
 }
 
 type mutation struct {
@@ -208,8 +232,10 @@ func parseSuspend(value string) (bool, error) {
 func buildMutation(workload Workload, previous, current any, changed bool, annotationKey, annotationValue, specField string) mutation {
 	status := "unchanged"
 	var patch map[string]any
+	var annotations map[string]string
 	if changed {
 		status = "updated"
+		annotations = map[string]string{annotationKey: annotationValue}
 		metadata := map[string]any{"annotations": map[string]any{annotationKey: annotationValue}}
 		if rv := workload.Object.GetResourceVersion(); rv != "" {
 			metadata["resourceVersion"] = rv
@@ -222,6 +248,7 @@ func buildMutation(workload Workload, previous, current any, changed bool, annot
 	return mutation{workload: workload, patch: patch, change: Change{
 		Namespace: workload.Namespace(), Kind: workload.Kind, Name: workload.Name(),
 		Previous: previous, Current: current, Status: status,
+		Annotations: annotations,
 	}}
 }
 

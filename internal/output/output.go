@@ -25,16 +25,18 @@ type IgnoredResource struct {
 }
 
 type MutatedResource struct {
-	Namespace string         `json:"namespace"`
-	Kind      selection.Kind `json:"kind"`
-	Name      string         `json:"name"`
-	Previous  State          `json:"previous"`
-	Current   State          `json:"current"`
-	Status    string         `json:"status"`
+	Namespace   string            `json:"namespace"`
+	Kind        selection.Kind    `json:"kind"`
+	Name        string            `json:"name"`
+	Previous    State             `json:"previous"`
+	Current     State             `json:"current"`
+	Status      string            `json:"status"`
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 type Result struct {
 	Operation  string            `json:"operation"`
+	DryRun     bool              `json:"dryRun,omitempty"`
 	Cluster    Cluster           `json:"cluster"`
 	Discovered int               `json:"discovered"`
 	Included   int               `json:"included"`

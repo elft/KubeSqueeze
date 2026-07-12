@@ -20,6 +20,7 @@ type Options struct {
 	Context       string
 	Namespaces    []string
 	AllNamespaces bool
+	DryRun        bool
 	Include       selection.RuleOptions
 	Ignore        selection.RuleOptions
 }
